@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Facial Analysis & Style Advisor</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- face-api.js CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        #video {
+            transform: scaleX(-1);
+            border-radius: 15px;
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: scaleX(-1);
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .loading-spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .video-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .recommendation-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+        
+        .recommendation-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .shape-indicator {
+            font-size: 3rem;
+            margin: 1rem 0;
+        }
+        
+        .mood-emoji {
+            font-size: 4rem;
+            margin: 1rem 0;
+        }
+        
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p class="text-white text-xl mt-6">Loading AI Models...</p>
+        <p class="text-gray-300 text-sm mt-2" id="loadingStatus">Initializing...</p>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-white text-center mb-8">
+            🎭 AI Facial Analysis & Style Advisor
+        </h1>
+
+        <!-- Split Screen Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Side: Video Feed -->
+            <div class="bg-white rounded-2xl p-6 shadow-2xl">
+                <h2 class="text-2xl font-bold mb-4 text-center">Live Camera Feed</h2>
+                <div class="video-container flex justify-center">
+                    <video id="video" width="640" height="480" autoplay muted></video>
+                    <canvas id="canvas"></canvas>
+                </div>
+                <div class="mt-4 flex justify-center">
+                    <button id="captureBtn" class="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-purple-600 hover:to-indigo-700 transition-all shadow-lg">
+                        📸 Capture Recommendation
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Side: Analysis Dashboard -->
+            <div class="space-y-4">
+                <!-- Face Shape -->
+                <div class="stat-box">
+                    <h3 class="text-lg font-semibold mb-2">Detected Face Shape</h3>
+                    <div class="shape-indicator" id="shapeEmoji">🔍</div>
+                    <p class="text-2xl font-bold" id="faceShape">Detecting...</p>
+                </div>
+
+                <!-- Emotion/Mood -->
+                <div class="stat-box">
+                    <h3 class="text-lg font-semibold mb-2">Current Mood</h3>
+                    <div class="mood-emoji" id="moodEmoji">😊</div>
+                    <p class="text-2xl font-bold" id="emotion">Detecting...</p>
+                </div>
+
+                <!-- Recommendations -->
+                <div class="bg-white rounded-2xl p-6 shadow-2xl">
+                    <h2 class="text-2xl font-bold mb-4">Personalized Recommendations</h2>
+                    
+                    <!-- Hairstyles -->
+                    <div class="recommendation-card">
+                        <h3 class="text-xl font-semibold mb-3 text-purple-600">✂️ Recommended Hairstyles</h3>
+                        <ul id="hairstyles" class="list-disc list-inside space-y-2 text-gray-700">
+                            <li>Analyzing...</li>
+                        </ul>
+                    </div>
+
+                    <!-- Beard Styles -->
+                    <div class="recommendation-card">
+                        <h3 class="text-xl font-semibold mb-3 text-indigo-600">🧔 Recommended Beard Styles</h3>
+                        <ul id="beardStyles" class="list-disc list-inside space-y-2 text-gray-700">
+                            <li>Analyzing...</li>
+                        </ul>
+                    </div>
+
+                    <!-- Mood Tips -->
+                    <div class="recommendation-card">
+                        <h3 class="text-xl font-semibold mb-3 text-pink-600">💡 Mood-Based Tips</h3>
+                        <p id="moodTips" class="text-gray-700 italic">Analyzing your mood...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let video, canvas, displaySize;
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingStatus = document.getElementById('loadingStatus');
+
+        // Initialize the application
+        async function init() {
+            try {
+                // Load face-api.js models
+                loadingStatus.textContent = 'Loading Tiny Face Detector...';
+                await faceapi.nets.tinyFaceDetector.loadFromUri('./model');
+                
+                loadingStatus.textContent = 'Loading Face Landmark Model...';
+                await faceapi.nets.faceLandmark68Net.loadFromUri('./model');
+                
+                loadingStatus.textContent = 'Loading Face Expression Model...';
+                await faceapi.nets.faceExpressionNet.loadFromUri('./model');
+                
+                loadingStatus.textContent = 'Starting webcam...';
+                
+                // Start video stream
+                await startVideo();
+                
+                // Hide loading overlay
+                loadingOverlay.style.display = 'none';
+                
+                // Start detection
+                detectFace();
+            } catch (error) {
+                console.error('Initialization error:', error);
+                loadingStatus.textContent = 'Error loading models. Please refresh the page.';
+            }
+        }
+
+        // Start video stream
+        async function startVideo() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                video.srcObject = stream;
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                console.error('Error accessing webcam:', error);
+                alert('Please allow camera access to use this application.');
+            }
+        }
+
+        // Main detection loop
+        async function detectFace() {
+            // Set canvas dimensions to match video
+            displaySize = { width: video.width, height: video.height };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            setInterval(async () => {
+                // Detect face with landmarks and expressions
+                const detections = await faceapi
+                    .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceExpressions();
+
+                // Clear canvas
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (detections.length > 0) {
+                    const detection = detections[0];
+                    
+                    // Resize detections to match display
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                    
+                    // Draw landmarks
+                    faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+                    
+                    // Draw detection box
+                    faceapi.draw.drawDetections(canvas, resizedDetections);
+                    
+                    // Analyze face shape
+                    const faceShape = analyzeFaceShape(detection.landmarks);
+                    updateFaceShape(faceShape);
+                    
+                    // Analyze emotion
+                    const emotion = analyzeEmotion(detection.expressions);
+                    updateEmotion(emotion);
+                    
+                    // Update recommendations
+                    updateRecommendations(faceShape, emotion);
+                    
+                    // Draw face shape overlay
+                    drawFaceShapeOverlay(ctx, detection.landmarks, faceShape);
+                }
+            }, 100);
+        }
+
+        // Calculate Euclidean distance between two points
+        function euclideanDistance(point1, point2) {
+            const dx = point1.x - point2.x;
+            const dy = point1.y - point2.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Analyze face shape using 68 landmarks
+        function analyzeFaceShape(landmarks) {
+            const points = landmarks.positions;
+            
+            // Calculate key measurements using Euclidean distance
+            // Forehead Width (Landmarks 17-26 distance)
+            const foreheadWidth = euclideanDistance(points[17], points[26]);
+            
+            // Cheekbone Width (Landmarks 1-15 distance)
+            const cheekboneWidth = euclideanDistance(points[1], points[15]);
+            
+            // Jawline Width (Landmarks 5-11 distance)
+            const jawlineWidth = euclideanDistance(points[5], points[11]);
+            
+            // Face Length (top to bottom)
+            const faceLength = euclideanDistance(points[8], points[27]);
+            
+            // Calculate ratios for classification
+            const widthToLength = cheekboneWidth / faceLength;
+            const jawToForehead = jawlineWidth / foreheadWidth;
+            const jawToCheek = jawlineWidth / cheekboneWidth;
+            
+            // Classify face shape based on ratios
+            // Round: Width and length are similar, soft jawline
+            if (widthToLength > 0.75 && jawToCheek > 0.85) {
+                return 'Round';
+            }
+            // Square: Similar width measurements, strong jaw
+            else if (Math.abs(foreheadWidth - cheekboneWidth) < 15 && 
+                     Math.abs(cheekboneWidth - jawlineWidth) < 15) {
+                return 'Square';
+            }
+            // Heart: Wide forehead, narrow jaw
+            else if (jawToForehead < 0.75 && foreheadWidth > jawlineWidth) {
+                return 'Heart';
+            }
+            // Diamond: Wide cheekbones, narrow forehead and jaw
+            else if (cheekboneWidth > foreheadWidth && 
+                     cheekboneWidth > jawlineWidth && 
+                     jawToForehead > 0.7) {
+                return 'Diamond';
+            }
+            // Oval: Balanced proportions (default)
+            else {
+                return 'Oval';
+            }
+        }
+
+        // Analyze emotion from expressions
+        function analyzeEmotion(expressions) {
+            // Find the emotion with highest probability
+            let maxEmotion = 'neutral';
+            let maxValue = 0;
+            
+            for (const [emotion, value] of Object.entries(expressions)) {
+                if (value > maxValue) {
+                    maxValue = value;
+                    maxEmotion = emotion;
+                }
+            }
+            
+            return maxEmotion;
+        }
+
+        // Update face shape display
+        function updateFaceShape(shape) {
+            const shapeEmojis = {
+                'Oval': '🥚',
+                'Round': '⭕',
+                'Square': '⬛',
+                'Heart': '❤️',
+                'Diamond': '💎'
+            };
+            
+            document.getElementById('shapeEmoji').textContent = shapeEmojis[shape] || '🔍';
+            document.getElementById('faceShape').textContent = shape;
+        }
+
+        // Update emotion display
+        function updateEmotion(emotion) {
+            const emotionEmojis = {
+                'happy': '😊',
+                'sad': '😢',
+                'neutral': '😐',
+                'angry': '😠',
+                'surprised': '😮',
+                'disgusted': '🤢',
+                'fearful': '😨'
+            };
+            
+            const emotionNames = {
+                'happy': 'Happy',
+                'sad': 'Sad',
+                'neutral': 'Neutral',
+                'angry': 'Angry',
+                'surprised': 'Surprised',
+                'disgusted': 'Disgusted',
+                'fearful': 'Fearful'
+            };
+            
+            document.getElementById('moodEmoji').textContent = emotionEmojis[emotion] || '😊';
+            document.getElementById('emotion').textContent = emotionNames[emotion] || 'Unknown';
+        }
+
+        // Update recommendations based on face shape and emotion
+        function updateRecommendations(shape, emotion) {
+            // Hairstyle recommendations based on face shape
+            const hairstyles = {
+                'Oval': [
+                    'Almost any style works! Try a textured crop',
+                    'Classic side part with volume',
+                    'Slicked back undercut',
+                    'Messy quiff or pompadour'
+                ],
+                'Round': [
+                    'High and tight fade to add height',
+                    'Angular fringe to create definition',
+                    'Textured top with short sides',
+                    'Quiff or pompadour for vertical emphasis'
+                ],
+                'Square': [
+                    'Textured crop with soft edges',
+                    'Side-swept fringe to soften angles',
+                    'Medium-length wavy style',
+                    'Casual tousled look'
+                ],
+                'Heart': [
+                    'Side part with volume on top',
+                    'Textured fringe covering forehead',
+                    'Medium length with layers',
+                    'Soft, flowing styles'
+                ],
+                'Diamond': [
+                    'Fuller styles at temples and chin',
+                    'Side-swept bangs',
+                    'Textured medium-length cut',
+                    'Avoid extra height on top'
+                ]
+            };
+
+            // Beard style recommendations
+            const beardStyles = {
+                'Oval': [
+                    'Any beard style works great',
+                    'Full beard with definition',
+                    'Goatee or soul patch'
+                ],
+                'Round': [
+                    'Squared-off beard to add angles',
+                    'Goatee extending down to elongate face',
+                    'Avoid round, full beards'
+                ],
+                'Square': [
+                    'Rounded beard to soften jaw',
+                    'Short, well-trimmed beard',
+                    'Circle beard or goatee'
+                ],
+                'Heart': [
+                    'Fuller beard at chin to balance',
+                    'Goatee or soul patch',
+                    'Avoid heavy sideburns'
+                ],
+                'Diamond': [
+                    'Fuller beard on chin and jaw',
+                    'Avoid excessive length',
+                    'Keep cheeks trimmed'
+                ]
+            };
+
+            // Mood-based tips
+            const moodTips = {
+                'happy': '🌟 You\'re glowing! This is a great time for a fresh new style to match your positive energy!',
+                'sad': '💆 Feeling down? A fresh haircut can be a great mood booster! Try something new to lift your spirits.',
+                'neutral': '✨ Looking calm and collected. Why not try a subtle style change to add some excitement?',
+                'angry': '🧘 Take a breath. A calming grooming session might help you relax. Consider a classic, timeless style.',
+                'surprised': '🎉 Caught off guard? Channel that energy into a bold new look!',
+                'disgusted': '🌸 Fresh start? A clean, sharp style can help reset your day.',
+                'fearful': '🤗 Don\'t worry! A comfortable, familiar style can help you feel more confident.'
+            };
+
+            // Update UI
+            const hairstylesList = document.getElementById('hairstyles');
+            hairstylesList.innerHTML = hairstyles[shape].map(style => `<li>${style}</li>`).join('');
+
+            const beardStylesList = document.getElementById('beardStyles');
+            beardStylesList.innerHTML = beardStyles[shape].map(style => `<li>${style}</li>`).join('');
+
+            const moodTipsText = document.getElementById('moodTips');
+            moodTipsText.textContent = moodTips[emotion] || 'Looking good!';
+        }
+
+        // Draw geometric shape overlay based on detected face shape
+        function drawFaceShapeOverlay(ctx, landmarks, shape) {
+            const points = landmarks.positions;
+            ctx.strokeStyle = '#667eea';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]);
+            
+            // Get face bounds
+            const leftEdge = points[0].x;
+            const rightEdge = points[16].x;
+            const topEdge = points[27].y;
+            const bottomEdge = points[8].y;
+            const centerX = (leftEdge + rightEdge) / 2;
+            const centerY = (topEdge + bottomEdge) / 2;
+            const width = rightEdge - leftEdge;
+            const height = bottomEdge - topEdge;
+            
+            ctx.beginPath();
+            
+            switch(shape) {
+                case 'Oval':
+                    // Draw ellipse
+                    ctx.ellipse(centerX, centerY, width / 2, height / 2, 0, 0, 2 * Math.PI);
+                    break;
+                case 'Round':
+                    // Draw circle
+                    const radius = Math.min(width, height) / 2;
+                    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                    break;
+                case 'Square':
+                    // Draw rectangle with rounded corners
+                    const rectSize = Math.max(width, height) / 2;
+                    ctx.roundRect(centerX - rectSize, centerY - rectSize, 
+                                rectSize * 2, rectSize * 2, 10);
+                    break;
+                case 'Heart':
+                    // Draw heart shape (simplified as triangle)
+                    ctx.moveTo(centerX, bottomEdge);
+                    ctx.lineTo(leftEdge, topEdge + height * 0.3);
+                    ctx.lineTo(centerX, topEdge);
+                    ctx.lineTo(rightEdge, topEdge + height * 0.3);
+                    ctx.closePath();
+                    break;
+                case 'Diamond':
+                    // Draw diamond
+                    ctx.moveTo(centerX, topEdge);
+                    ctx.lineTo(rightEdge, centerY);
+                    ctx.lineTo(centerX, bottomEdge);
+                    ctx.lineTo(leftEdge, centerY);
+                    ctx.closePath();
+                    break;
+            }
+            
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Capture screenshot functionality
+        document.getElementById('captureBtn').addEventListener('click', () => {
+            // Create a temporary canvas to combine video and overlay
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 1280;
+            tempCanvas.height = 960;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // Draw white background
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Draw video frame (mirrored)
+            tempCtx.save();
+            tempCtx.scale(-1, 1);
+            tempCtx.drawImage(video, -640, 0, 640, 480);
+            tempCtx.restore();
+            
+            // Draw canvas overlay (mirrored)
+            tempCtx.save();
+            tempCtx.scale(-1, 1);
+            tempCtx.drawImage(canvas, -640, 0, 640, 480);
+            tempCtx.restore();
+            
+            // Draw recommendations text
+            tempCtx.fillStyle = '#000';
+            tempCtx.font = 'bold 24px Arial';
+            tempCtx.fillText('AI Facial Analysis & Style Advisor', 680, 50);
+            
+            tempCtx.font = '20px Arial';
+            tempCtx.fillText('Face Shape: ' + document.getElementById('faceShape').textContent, 680, 100);
+            tempCtx.fillText('Mood: ' + document.getElementById('emotion').textContent, 680, 130);
+            
+            tempCtx.font = 'bold 18px Arial';
+            tempCtx.fillText('Recommended Hairstyles:', 680, 180);
+            tempCtx.font = '16px Arial';
+            const hairstyles = document.getElementById('hairstyles').querySelectorAll('li');
+            hairstyles.forEach((item, index) => {
+                tempCtx.fillText('• ' + item.textContent, 690, 210 + (index * 25));
+            });
+            
+            tempCtx.font = 'bold 18px Arial';
+            tempCtx.fillText('Recommended Beard Styles:', 680, 350);
+            tempCtx.font = '16px Arial';
+            const beardStyles = document.getElementById('beardStyles').querySelectorAll('li');
+            beardStyles.forEach((item, index) => {
+                tempCtx.fillText('• ' + item.textContent, 690, 380 + (index * 25));
+            });
+            
+            // Download image
+            tempCanvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'style-recommendation-' + Date.now() + '.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+            
+            // Show feedback
+            const btn = document.getElementById('captureBtn');
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Captured!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        });
+
+        // Start the application when the page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
